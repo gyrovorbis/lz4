@@ -352,8 +352,9 @@ UTIL_STATIC int UTIL_isRegFD(int fd);
 
 UTIL_STATIC int UTIL_setFileStat(const char *filename, stat_t *statbuf)
 {
-    int res = 0;
 
+    int res = 0;
+#ifndef __DREAMCAST__
     if (!UTIL_isRegFile(filename))
         return -1;
 
@@ -377,7 +378,7 @@ UTIL_STATIC int UTIL_setFileStat(const char *filename, stat_t *statbuf)
 #endif
 
     res += chmod(filename, statbuf->st_mode & 07777);  /* Copy file permissions */
-
+#endif
     errno = 0;
     return -res; /* number of errors is returned */
 }
