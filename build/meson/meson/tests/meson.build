@@ -25,8 +25,12 @@ test_exes = {
     'test': false,
   },
   'datagen': {
-    'sources': files(lz4_source_root / 'tests/datagencli.c'),
-    'objects': lz4.extract_objects(lz4_source_root / 'programs/datagen.c'),
+    'sources': files(
+        lz4_source_root / 'programs/lorem.c',
+        lz4_source_root / 'tests/datagencli.c',
+        lz4_source_root / 'tests/datagen.c',
+        lz4_source_root / 'tests/loremOut.c',
+        ),
     'include_directories': include_directories(lz4_source_root / 'programs'),
   },
   'decompress-partial-usingDict.c': {
@@ -43,7 +47,7 @@ test_exes = {
   },
   'freestanding': {
     'sources': files(lz4_source_root / 'tests/freestanding.c'),
-    'c_args': ['-ffreestanding', '-Wno-unused-parameter', '-Wno-declaration-after-statement'],
+    'c_args': ['-ffreestanding', '-fno-stack-protector', '-Wno-unused-parameter', '-Wno-declaration-after-statement', '-DLZ4_DEBUG=0'],
     'link_args': ['-nostdlib'],
     'build': cc.get_id() in ['gcc', 'clang'] and
       host_machine.system() == 'linux' and host_machine.cpu_family() == 'x86_64',

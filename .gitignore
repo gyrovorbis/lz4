@@ -1,6 +1,8 @@
 # Object files
 *.o
 *.ko
+obj/
+cacheObjs/
 
 # Libraries
 *.lib
@@ -19,14 +21,23 @@
 *.app
 lz4
 
+# Builders
+cmakebuild/
+builddir/
+cachedObjs/
+
 # IDE / editors files
 .clang_complete
+.vscode
 _codelite/
 _codelite_lz4/
 bin/
 *.zip
 *.swp
 compile_flags.txt
+compile_commands.json
+.vscode
+.cache
 
 # analyzers
 infer-out
@@ -42,3 +53,12 @@ ld.exe*
 # test artifacts
 *.lz4
 tmp*
+.stdvars.log
+cmake_download/
+cmake_bins/
+cmake_build/
+cmake_install_test/
+
+# generated Windows resource files
+lib/*.rc
+programs/*.rc
