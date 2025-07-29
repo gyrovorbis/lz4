@@ -24,6 +24,7 @@ It hashes every combination of `CC/CXX`, `CFLAGS/CXXFLAGS`, `CPPFLAGS`, `LDFLAGS
 ```make
 C_SRCDIRS   := src src/cdeps    # all .c are in these directories
 CXX_SRCDIRS := src src/cxxdeps  # all .cpp are in these directories
+```
 
 ### 2 · Add and include
 

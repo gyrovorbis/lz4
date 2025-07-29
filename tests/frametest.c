@@ -105,9 +105,86 @@ static U32 use_pause = 0;
 #define MAX(a,b)  ( (a) > (b) ? (a) : (b) )
 
 typedef struct {
-    int nbAllocs;
+    uintptr_t ptr;
+    size_t size;
+} Test_alloc_alloc;
+
+typedef struct {
+    Test_alloc_alloc* allocs;
+    size_t allocs_capacity;
+
+    size_t live_alloc_count;
+    size_t live_alloc_total_space;
 } Test_alloc_state;
-static Test_alloc_state g_testAllocState = { 0 };
+
+static Test_alloc_state g_testAllocState;
+
+static void alloc_state_init(Test_alloc_state* state) {
+    state->allocs = NULL;
+    state->allocs_capacity = 0;
+
+    state->live_alloc_count = 0;
+    state->live_alloc_total_space = 0;
+}
+
+static void alloc_state_destroy(Test_alloc_state* state) {
+    free(state->allocs);
+    alloc_state_init(state);
+}
+
+static void alloc_state_record_alloc(Test_alloc_state* state, uintptr_t ptr, size_t size) {
+    size_t i;
+    Test_alloc_alloc* alloc = NULL;
+    if (ptr == (uintptr_t)NULL) {
+        assert(size == 0);
+        return;
+    }
+    for (i = 0; i < state->allocs_capacity; i++) {
+        if (state->allocs[i].ptr == (uintptr_t)NULL) {
+            alloc = &state->allocs[i];
+            break;
+        }
+    }
+    if (alloc == NULL) {
+        const size_t old_capacity = state->allocs_capacity;
+        const size_t new_capacity = (old_capacity + !old_capacity) * 2;
+        Test_alloc_alloc* new_allocs = (Test_alloc_alloc*)realloc(
+                state->allocs, new_capacity * sizeof(state->allocs[0]));
+        assert(state->live_alloc_count == old_capacity);
+        assert(new_allocs != NULL);
+        memset(&new_allocs[old_capacity], 0, (new_capacity - old_capacity) * sizeof(state->allocs[0]));
+        state->allocs = new_allocs;
+        state->allocs_capacity = new_capacity;
+        alloc = &state->allocs[old_capacity];
+    }
+    assert(alloc != NULL);
+    assert(alloc->ptr == (uintptr_t)NULL);
+    alloc->ptr = ptr;
+    alloc->size = size;
+    state->live_alloc_count++;
+    state->live_alloc_total_space += size;
+}
+
+static void alloc_state_record_free(Test_alloc_state* state, uintptr_t ptr) {
+    size_t i;
+    if (ptr == (uintptr_t)NULL) {
+        return;
+    }
+    for (i = 0; i < state->allocs_capacity; i++) {
+        Test_alloc_alloc* alloc = &state->allocs[i];
+        if (alloc->ptr == ptr) {
+            const size_t size = alloc->size;
+            assert(state->live_alloc_count >= 1);
+            assert(state->live_alloc_total_space >= size);
+            state->live_alloc_count--;
+            state->live_alloc_total_space -= size;
+            alloc->ptr = (uintptr_t)NULL;
+            alloc->size = 0;
+            return;
+        }
+    }
+    assert(0); /* didn't find matching entry */
+}
 
 static void* dummy_malloc(void* state, size_t s)
 {
@@ -115,9 +192,9 @@ static void* dummy_malloc(void* state, size_t s)
     void* const p = malloc(s);
     if (p==NULL) return NULL;
     assert(t != NULL);
-    t->nbAllocs += 1;
-    DISPLAYLEVEL(6, "Allocating %u bytes at address %p \n", (unsigned)s, p);
-    DISPLAYLEVEL(5, "nb allocated memory segments : %i \n", t->nbAllocs);
+    alloc_state_record_alloc(t, (uintptr_t)p, s);
+    DISPLAYLEVEL(6, "Allocating %llu bytes at address %p \n", (long long unsigned)s, p);
+    DISPLAYLEVEL(5, "nb allocated memory segments : %llu \n", (long long unsigned)t->live_alloc_count);
     return p;
 }
 
@@ -127,9 +204,9 @@ static void* dummy_calloc(void* state, size_t s)
     void* const p = calloc(1, s);
     if (p==NULL) return NULL;
     assert(t != NULL);
-    t->nbAllocs += 1;
-    DISPLAYLEVEL(6, "Allocating and zeroing %u bytes at address %p \n", (unsigned)s, p);
-    DISPLAYLEVEL(5, "nb allocated memory segments : %i \n", t->nbAllocs);
+    alloc_state_record_alloc(t, (uintptr_t)p, s);
+    DISPLAYLEVEL(6, "Allocating and zeroing %llu bytes at address %p \n", (long long unsigned)s, p);
+    DISPLAYLEVEL(5, "nb allocated memory segments : %llu \n", (long long unsigned)t->live_alloc_count);
     return p;
 }
 
@@ -141,11 +218,10 @@ static void dummy_free(void* state, void* p)
         return;
     }
     DISPLAYLEVEL(6, "freeing memory at address %p \n", p);
-    free(p);
     assert(t != NULL);
-    t->nbAllocs -= 1;
-    DISPLAYLEVEL(5, "nb of allocated memory segments after this free : %i \n", t->nbAllocs);
-    assert(t->nbAllocs >= 0);
+    alloc_state_record_free(t, (uintptr_t)p);
+    free(p);
+    DISPLAYLEVEL(5, "nb of allocated memory segments after this free : %llu \n", (long long unsigned)t->live_alloc_count);
 }
 
 static const LZ4F_CustomMem lz4f_cmem_test = {
@@ -293,6 +369,7 @@ static int unitTests(U32 seed, double compressibility)
     int basicTests_error = 0;
     LZ4F_preferences_t prefs;
     memset(&prefs, 0, sizeof(prefs));
+    alloc_state_init((Test_alloc_state*)lz4f_cmem_test.opaqueState);
 
     if (!CNBuffer || !compressedBuffer || !decodedBuffer) {
         DISPLAY("allocation error, not enough memory to start fuzzer tests \n");
@@ -624,6 +701,7 @@ static int unitTests(U32 seed, double compressibility)
     /* dictID tests */
     {   size_t cErr;
         U32 const dictID = 0x99;
+
         /* test advanced variant with custom allocator functions */
         cctx = LZ4F_createCompressionContext_advanced(lz4f_cmem_test, LZ4F_VERSION);
         if (cctx==NULL) goto _output_error;
@@ -715,10 +793,13 @@ static int unitTests(U32 seed, double compressibility)
         size_t const srcSize = 65 KB; /* must be > 64 KB to avoid short-size optimizations */
         size_t const dstCapacity = LZ4F_compressFrameBound(srcSize, NULL);
         size_t cSizeNoDict, cSizeWithDict;
-        LZ4F_CDict* const cdict = LZ4F_createCDict(CNBuffer, dictSize);
-        if (cdict == NULL) goto _output_error;
-        CHECK( LZ4F_createCompressionContext(&cctx, LZ4F_VERSION) );
+        LZ4F_CDict* cdict = NULL;
 
+        CHECK( LZ4F_createCompressionContext(&cctx, LZ4F_VERSION) );
+        cdict = LZ4F_createCDict(CNBuffer, dictSize);
+        if (cdict == NULL)
+            goto _output_error;
+        
         DISPLAYLEVEL(3, "Testing LZ4F_createCDict_advanced : ");
         {   LZ4F_CDict* const cda = LZ4F_createCDict_advanced(lz4f_cmem_test, CNBuffer, dictSize);
             if (cda == NULL) goto _output_error;
@@ -953,6 +1034,65 @@ static int unitTests(U32 seed, double compressibility)
         DISPLAYLEVEL(3, "Skipped %i bytes \n", (int)(ip - (BYTE*)compressedBuffer - 8));
     }
 
+    DISPLAYLEVEL(3, "Context size test: ");
+    {
+        size_t c_result;
+        size_t d_result;
+        LZ4F_cctx* cc;
+        LZ4F_dctx* dc;
+        Test_alloc_state c_allocs;
+        Test_alloc_state d_allocs;
+        LZ4F_CustomMem c_mem = lz4f_cmem_test;
+        LZ4F_CustomMem d_mem = lz4f_cmem_test;
+
+        alloc_state_init(&c_allocs);
+        alloc_state_init(&d_allocs);
+        c_mem.opaqueState = &c_allocs;
+        d_mem.opaqueState = &d_allocs;
+
+        if (c_allocs.live_alloc_total_space != 0) goto _output_error;
+        if (d_allocs.live_alloc_total_space != 0) goto _output_error;
+
+        if (LZ4F_cctx_size(NULL) != 0) goto _output_error;
+        if (LZ4F_dctx_size(NULL) != 0) goto _output_error;
+
+        cc = LZ4F_createCompressionContext_advanced(c_mem, LZ4F_VERSION);
+        dc = LZ4F_createDecompressionContext_advanced(d_mem, LZ4F_VERSION);
+
+        if (cc == NULL) goto _output_error;
+        if (dc == NULL) goto _output_error;
+
+        if (LZ4F_cctx_size(cc) != c_allocs.live_alloc_total_space) goto _output_error;
+        if (LZ4F_dctx_size(dc) != d_allocs.live_alloc_total_space) goto _output_error;
+
+        c_result = LZ4F_compressFrame_usingCDict(
+                cc,
+                compressedBuffer, LZ4F_compressFrameBound(testSize, NULL),
+                CNBuffer, testSize,
+                NULL, NULL);
+        CHECK(c_result);
+
+        d_result = testSize + 1;
+        CHECK(LZ4F_decompress(dc, decodedBuffer, &d_result, compressedBuffer, &c_result, NULL));
+
+        if (d_result != testSize) goto _output_error;
+
+        if (LZ4F_cctx_size(cc) != c_allocs.live_alloc_total_space) {
+            DISPLAYLEVEL(3, "%llu allocated in cctx but it says its size is %llu.\n", (long long unsigned)c_allocs.live_alloc_total_space, (long long unsigned)LZ4F_cctx_size(cc));
+            goto _output_error;
+        }
+        if (LZ4F_dctx_size(dc) != d_allocs.live_alloc_total_space) {
+            DISPLAYLEVEL(3, "%llu allocated in dctx but it says its size is %llu.\n", (long long unsigned)d_allocs.live_alloc_total_space, (long long unsigned)LZ4F_dctx_size(dc));
+            goto _output_error;
+        }
+
+        LZ4F_freeCompressionContext(cc);
+        LZ4F_freeDecompressionContext(dc);
+        alloc_state_destroy(&c_allocs);
+        alloc_state_destroy(&d_allocs);
+    }
+    DISPLAYLEVEL(3, "OK \n");
+
     DISPLAY("Basic tests completed \n");
 _end:
     free(CNBuffer);
@@ -960,6 +1100,7 @@ _end:
     free(decodedBuffer);
     LZ4F_freeDecompressionContext(dCtx); dCtx = NULL;
     LZ4F_freeCompressionContext(cctx); cctx = NULL;
+    alloc_state_destroy((Test_alloc_state*)lz4f_cmem_test.opaqueState);
     return basicTests_error;
 
 _output_error:

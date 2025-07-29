@@ -747,6 +747,11 @@ LZ4FLIB_STATIC_API LZ4F_cctx* LZ4F_createCompressionContext_advanced(LZ4F_Custom
 LZ4FLIB_STATIC_API LZ4F_dctx* LZ4F_createDecompressionContext_advanced(LZ4F_CustomMem customMem, unsigned version);
 LZ4FLIB_STATIC_API LZ4F_CDict* LZ4F_createCDict_advanced(LZ4F_CustomMem customMem, const void* dictBuffer, size_t dictSize);
 
+/*! Context size inspection : v1.10.1+
+ *  These functions return the total memory footprint of the provided context.
+ */
+LZ4FLIB_STATIC_API size_t LZ4F_cctx_size(const LZ4F_cctx* cctx);
+LZ4FLIB_STATIC_API size_t LZ4F_dctx_size(const LZ4F_dctx* dctx);
 
 #if defined (__cplusplus)
 }

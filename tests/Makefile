@@ -272,7 +272,7 @@ test-lz4: lz4 datagen test-lz4-essentials test-lz4-opt-parser \
           test-lz4-sparse test-lz4-hugefile test-lz4-dict \
           test-lz4-skippable
 
-test-lz4c: LZ4C = $(LZ4)c
+test-lz4c: LZ4C := $(basename $(LZ4))c$(suffix $(LZ4))
 test-lz4c: lz4c datagen
 	@echo "\n ---- test lz4c variant ----"
 	$(DATAGEN) -g256MB | $(LZ4C) -l -v | $(LZ4C) -t
