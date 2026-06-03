@@ -18,7 +18,7 @@ kos-cmake -S "$SOURCE_DIR" \
       -DBUILD_STATIC_LIBS=ON \
       -DLZ4_BUILD_CLI=OFF \
       -DLZ4_BUILD_LEGACY_LZ4C=OFF \
-      -DCMAKE_C_FLAGS="-include kos.h -include fastmem/fastmem.h -DLZ4_FAST_DEC_LOOP=1 -DLZ4_DISTANCE_MAX=32 -DLZ4_FREESTANDING=1 -DLZ4_memcpy=memcpy_fast -DLZ4_memmove=memmove_fast -DLZ4_memset=memset_fast"
+      -DCMAKE_C_FLAGS="-include kos.h -include sh4zam/shz_sh4zam.h -DLZ4HC_HEAPMODE=0 -DLZ4_FAST_DEC_LOOP=1 -DLZ4_DISTANCE_MAX=32 -DLZ4_FREESTANDING=1 -DLZ4_memcpy=shz_memcpy -DLZ4_memmove=shz_memmove -DLZ4_memset=memset"
 
 #-DCMAKE_C_FLAGS="-DLZ4_FREESTANDING=1 -include /home/gpf/code/dreamcast/lz4/build/lz4_dreamcast.h 
 # Build
